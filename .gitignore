@@ -1,0 +1,27 @@
+# Secrets — never commit
+.env
+.env.local
+.env.production
+.env.*.local
+
+# Python
+backend/.venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/**/*.pyc
+backend/models/*.joblib
+
+# Node
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+# Foundry
+contracts/out/
+contracts/cache/
+contracts/broadcast/*/31337/
+contracts/lib/
+
+# OS
+.DS_Store
+Thumbs.db
