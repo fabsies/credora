@@ -29,32 +29,32 @@ def _generate_profiles(n: int, is_defaulter: bool, rng: np.random.Generator) -> 
     """
     if is_defaulter:
         # Defaulters — irregular, low-volume, short history
-        days_between_payments_mean = rng.uniform(18, 45, n)
+        days_between_payments_mean = rng.uniform(8, 30, n)
         days_between_payments_std  = rng.uniform(8, 20, n)
-        missed_payment_count       = rng.integers(3, 12, n)
-        monthly_transaction_count  = rng.uniform(2, 10, n)
-        monthly_transaction_value  = rng.uniform(500, 5000, n)
+        missed_payment_count       = rng.integers(1, 8, n)
+        monthly_transaction_count  = rng.uniform(8, 20, n)
+        monthly_transaction_value  = rng.uniform(3000, 25000, n)
         remittance_frequency       = rng.uniform(0, 1, n)
-        remittance_recency_days    = rng.uniform(60, 180, n)
+        remittance_recency_days    = rng.uniform(10, 90, n)
         airtime_topup_frequency    = rng.uniform(0.5, 2, n)
         airtime_topup_avg_amount   = rng.uniform(20, 100, n)
         weekend_activity_ratio     = rng.uniform(0.1, 0.4, n)
         month_end_spike_ratio      = rng.uniform(0.5, 1.2, n)
-        account_longevity_months   = rng.uniform(1, 18, n)
+        account_longevity_months   = rng.uniform(6, 30, n)
     else:
         # Non-defaulters — consistent, higher-volume, longer history
-        days_between_payments_mean = rng.uniform(5, 18, n)
+        days_between_payments_mean = rng.uniform(5, 22, n)
         days_between_payments_std  = rng.uniform(1, 8, n)
-        missed_payment_count       = rng.integers(0, 3, n)
-        monthly_transaction_count  = rng.uniform(10, 40, n)
-        monthly_transaction_value  = rng.uniform(5000, 50000, n)
+        missed_payment_count       = rng.integers(0, 4, n)
+        monthly_transaction_count  = rng.uniform(10, 25, n)
+        monthly_transaction_value  = rng.uniform(5000, 20000, n)
         remittance_frequency       = rng.uniform(1, 5, n)
-        remittance_recency_days    = rng.uniform(5, 60, n)
+        remittance_recency_days    = rng.uniform(5, 50, n)
         airtime_topup_frequency    = rng.uniform(2, 8, n)
         airtime_topup_avg_amount   = rng.uniform(100, 500, n)
         weekend_activity_ratio     = rng.uniform(0.3, 0.6, n)
         month_end_spike_ratio      = rng.uniform(1.2, 2.5, n)
-        account_longevity_months   = rng.uniform(12, 60, n)
+        account_longevity_months   = rng.uniform(10, 45, n)
 
     return pd.DataFrame({
         "days_between_payments_mean": days_between_payments_mean,
