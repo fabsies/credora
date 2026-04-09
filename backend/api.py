@@ -20,7 +20,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
-
+from signer import sign_score
 load_dotenv()
 
 # ── Constants ─────────────────────────────────────────────────────────────────
@@ -46,12 +46,6 @@ FEATURES = [
 # ── Load model ────────────────────────────────────────────────────────────────
 
 def load_model():
-    """
-    Load the versioned model file.
-    Reads the filename from the CREDORA_MODEL_FILE env variable.
-    Logs the filename and SHA256 checksum on every startup so you
-    always know exactly which model is running.
-    """
     if not MODEL_ENV:
         raise RuntimeError(
             "CREDORA_MODEL_FILE environment variable is not set. "
@@ -67,7 +61,6 @@ def load_model():
             "Run score_model.py first to train and save the model."
         )
 
-    # Compute SHA256 checksum for integrity verification
     sha256 = hashlib.sha256(model_path.read_bytes()).hexdigest()
     print(f"[api] Loading model: {model_path.name}")
     print(f"[api] SHA256: {sha256}")
@@ -97,11 +90,6 @@ app.add_middleware(
 # ── Pydantic input model ──────────────────────────────────────────────────────
 
 class BehavioralProfile(BaseModel):
-    """
-    Input payload for the /score endpoint.
-    Every field is validated for type and realistic range.
-    Values outside these ranges are rejected before they reach the model.
-    """
     days_between_payments_mean: float = Field(ge=1,    le=90)
     days_between_payments_std:  float = Field(ge=0,    le=30)
     missed_payment_count:       int   = Field(ge=0,    le=20)
@@ -114,7 +102,7 @@ class BehavioralProfile(BaseModel):
     weekend_activity_ratio:     float = Field(ge=0.0,  le=1.0)
     month_end_spike_ratio:      float = Field(ge=0.0,  le=5.0)
     account_longevity_months:   float = Field(ge=1,    le=120)
-
+    nonce:                      int = Field(ge=0)
     @field_validator("days_between_payments_mean",
                      "days_between_payments_std",
                      "monthly_transaction_count",
@@ -129,56 +117,42 @@ class BehavioralProfile(BaseModel):
                      mode="before")
     @classmethod
     def allow_none(cls, v):
-        """
-        Allow None for fields that can be missing in real-world data.
-        The pipeline's SimpleImputer will fill them with training medians.
-        """
         return v
 
 
 # ── Response model ────────────────────────────────────────────────────────────
 
 class ScoreResponse(BaseModel):
-    """
-    Response payload returned by the /score endpoint.
-    score:       0–1000 Credora creditworthiness score
-    probability: raw default probability from the model (0.0–1.0)
-    model:       filename of the model that produced this score
-    """
     score:       int
     probability: float
     model:       str
-
+    wallet:      str
+    nonce:       int
+    timestamp:   int
+    signature:   str
+    message:     str
 
 # ── Scoring logic ─────────────────────────────────────────────────────────────
 
-def compute_score(profile: BehavioralProfile) -> ScoreResponse:
-    """
-    Run the behavioral profile through the pipeline and return a score.
-
-    How the score is calculated:
-      1. The model returns a default probability (0.0 = safe, 1.0 = will default)
-      2. We invert it: creditworthiness = 1 - default_probability
-      3. We scale to 0–1000: score = int(creditworthiness * 1000)
-
-    A score of 1000 means the model is maximally confident the user will not default.
-    A score of 0 means the model is maximally confident they will default.
-    """
-    # Build a single-row DataFrame in the exact column order the pipeline expects
+def compute_score(profile: BehavioralProfile, wallet: str) -> ScoreResponse:
     input_df = pd.DataFrame([{
         feature: getattr(profile, feature) for feature in FEATURES
     }])
 
-    # predict_proba returns [[prob_non_default, prob_default]]
     prob_default = pipeline.predict_proba(input_df)[0][1]
-
-    # Invert and scale to 0–1000
     score = int((1 - prob_default) * 1000)
+
+    signed = sign_score(wallet=wallet, score=score, nonce=profile.nonce)
 
     return ScoreResponse(
         score=score,
         probability=round(prob_default, 6),
         model=MODEL_ENV,
+        wallet=signed["wallet"],
+        nonce=signed["nonce"],
+        timestamp=signed["timestamp"],
+        signature=signed["signature"],
+        message=signed["message"],
     )
 
 
@@ -186,17 +160,12 @@ def compute_score(profile: BehavioralProfile) -> ScoreResponse:
 
 @app.get("/health")
 def health():
-    """Simple health check — confirms the API is running and model is loaded."""
     return {"status": "ok", "model": MODEL_ENV}
 
 
 @app.post("/score", response_model=ScoreResponse)
-def score(profile: BehavioralProfile):
-    """
-    Accept a behavioral profile and return a Credora credit score.
-    Raw input data is never logged or persisted.
-    """
+def score(profile: BehavioralProfile, wallet: str):
     try:
-        return compute_score(profile)
+        return compute_score(profile, wallet)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
